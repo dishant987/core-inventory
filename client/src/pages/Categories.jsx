@@ -3,6 +3,8 @@ import api from '../services/api';
 import { Plus, Edit2, Trash2, X, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DeleteModal from '../components/DeleteModal';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -11,14 +13,31 @@ const Categories = () => {
   const [formData, setFormData] = useState({ name: '', description: '', isActive: true });
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const limit = 10;
 
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const { data } = await api.get(`/categories?status=${statusFilter}`);
-      setCategories(data);
+      const params = new URLSearchParams({
+        status: statusFilter,
+        page,
+        limit,
+        ...(searchTerm && { search: searchTerm })
+      });
+      const { data } = await api.get(`/categories?${params.toString()}`);
+      
+      if (data.data) {
+        setCategories(data.data);
+        setTotalPages(data.pages);
+      } else {
+        setCategories(data);
+        setTotalPages(1);
+      }
     } catch (error) {
       console.error('Failed to fetch categories', error);
       toast.error('Failed to fetch categories');
@@ -28,8 +47,11 @@ const Categories = () => {
   };
 
   useEffect(() => {
-    fetchCategories();
-  }, [statusFilter]);
+    const timer = setTimeout(() => {
+      fetchCategories();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [statusFilter, searchTerm, page]);
 
   const handleOpenModal = (category = null) => {
     if (category) {
@@ -89,24 +111,27 @@ const Categories = () => {
     <div style={{ color: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{
-        background: 'rgba(30, 41, 59, 0.6)',
-        backdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '24px',
-        padding: '2rem',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        background: 'rgba(30, 41, 59, 0.6)', backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '24px',
+        padding: 'clamp(1rem, 5vw, 2rem)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.75rem', margin: '0 0 0.5rem 0' }}>Categories Management</h2>
             <p style={{ margin: 0, color: '#94a3b8' }}>View and manage product categories.</p>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <SearchBar 
+              value={searchTerm} 
+              onChange={(v) => { setSearchTerm(v); setPage(1); }} 
+              onClear={() => { setSearchTerm(''); setPage(1); }}
+              placeholder="Search category name..."
+            />
             <div style={{ position: 'relative' }}>
                <Filter size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                <select
                  value={statusFilter}
-                 onChange={(e) => setStatusFilter(e.target.value)}
+                 onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
                  style={{
                     padding: '0.75rem 1rem 0.75rem 2.5rem', borderRadius: '12px',
                     background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(255,255,255,0.1)',
@@ -218,6 +243,11 @@ const Categories = () => {
             </tbody>
           </table>
         </div>
+        <Pagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          onPageChange={setPage} 
+        />
       </div>
 
       {/* Modal */}
@@ -285,23 +315,18 @@ const Categories = () => {
                 <label htmlFor="isActive" style={{ fontSize: '0.9rem', color: '#cbd5e1', cursor: 'pointer' }}>Category is Active</label>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <button 
                   type="button" onClick={closeModal}
-                  style={{
-                    flex: 1, padding: '0.75rem', background: 'transparent', color: '#f8fafc',
-                    border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '12px', fontWeight: 600, cursor: 'pointer'
-                  }}
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  style={{
-                    flex: 1, padding: '0.75rem', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-                    color: 'white', border: 'none', borderRadius: '12px', fontWeight: 600, cursor: 'pointer',
-                    boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.39)'
-                  }}
+                  className="btn-primary"
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Save Category
                 </button>

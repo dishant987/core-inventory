@@ -4,10 +4,15 @@ import api from '../services/api';
 import {
   Plus, X, PlusCircle, MinusCircle, Check, List, LayoutGrid,
   Package, ArrowRight, AlertTriangle, Clock, CheckCircle2, XCircle,
-  FileText, ShoppingCart, Printer
+  FileText, ShoppingCart, Printer, Download, Users, Edit2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 import './Operations.css';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const COLUMNS = [
   { id: 'Draft',    label: 'Draft',    icon: FileText,      color: '#64748b', bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.25)' },
@@ -38,55 +43,142 @@ const formatDate = (dateStr) => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-const Operations = () => {
-  const [allOperations, setAllOperations]   = useState([]);
-  const [locations, setLocations]           = useState([]);
-  const [products, setProducts]             = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [view, setView]                     = useState('kanban');
+// Helper to force download instead of browser preview
+const triggerDownload = (doc, filename) => {
+  const cleanFilename = filename.replace(/[\/\\?%*:|"<>]/g, '_');
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+};
 
-  // Filters
-  const [typeFilter, setTypeFilter]         = useState('all');
+const Operations = () => {
+  const { user } = useAuth();
+  
+  const canManage = (opType) => {
+    if (user?.role === 'Admin') return true;
+    if (user?.role === 'Inventory Manager') return ['Receipt', 'Delivery'].includes(opType);
+    if (user?.role === 'Warehouse Staff') return ['Internal Transfer', 'Adjustment'].includes(opType);
+    return false;
+  };
+
+  const [allOperations, setAllOperations] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('list');
+
+  // Filters & Pagination
+  const [typeFilter, setTypeFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const limit = 10;
 
   // Modal
-  const [modalOpen, setModalOpen]           = useState(false);
-  const [viewingOp, setViewingOp]           = useState(null);
-  const [formData, setFormData]             = useState({
-    type: 'Receipt', sourceLocation: '', destinationLocation: '', items: [], notes: '',
+  const [modalOpen, setModalOpen] = useState(false);
+  const [viewingOp, setViewingOp] = useState(null);
+  const [formData, setFormData] = useState({
+    type: 'Receipt', sourceLocation: '', destinationLocation: '', partner: '', items: [], notes: '',
   });
 
   // ─── Data fetching ─────────────────────────────────────────────────────────
   const fetchDependencies = async () => {
     try {
-      const [locRes, prodRes] = await Promise.all([
+      const [locRes, prodRes, partRes] = await Promise.all([
         api.get('/locations?status=active'),
         api.get('/products?status=active&limit=1000'),
+        api.get('/partners?type=all')
       ]);
       setLocations(locRes.data);
       setProducts(prodRes.data.data);
+      setPartners(partRes.data);
     } catch {
-      toast.error('Failed to load locations/products');
+      toast.error('Failed to load dependencies (locations/products/partners)');
     }
   };
 
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ limit: 500 });
+      const params = new URLSearchParams({ page, limit });
       if (typeFilter !== 'all') params.set('type', typeFilter);
       if (locationFilter !== 'all') params.set('location', locationFilter);
+      if (searchTerm) params.set('search', searchTerm);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      
       const { data } = await api.get(`/operations?${params}`);
       setAllOperations(data.data || []);
+      setTotalPages(data.pages || 1);
     } catch {
       toast.error('Failed to load operations');
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, locationFilter]);
+  }, [typeFilter, locationFilter, searchTerm, page, startDate, endDate]);
 
   useEffect(() => { fetchDependencies(); }, []);
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchAll();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchAll]);
+
+  const handleExportPDF = async () => {
+    try {
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(18);
+      doc.setTextColor(33, 47, 61);
+      doc.text('Inventory Operations Report', 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+      
+      const tableColumn = ["Reference", "Type", "Source", "Destination", "Status", "Date"];
+      const tableRows = [];
+
+      allOperations.forEach(op => {
+        const opData = [
+          op.referenceNumber,
+          op.type,
+          op.sourceLocation?.name || "N/A",
+          op.destinationLocation?.name || "N/A",
+          op.status,
+          new Date(op.createdAt).toLocaleDateString()
+        ];
+        tableRows.push(opData);
+      });
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: 'striped',
+        headStyles: { fillColor: [99, 102, 241] },
+        styles: { fontSize: 9 }
+      });
+
+      triggerDownload(doc, `operations_report_${new Date().toISOString().slice(0,10)}.pdf`);
+      toast.success('PDF downloaded!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to export PDF');
+    }
+  };
 
   // ─── Kanban data ────────────────────────────────────────────────────────────
   const columns = COLUMNS.map(col => ({
@@ -139,12 +231,18 @@ const Operations = () => {
         type: op.type,
         sourceLocation: op.sourceLocation?._id || '',
         destinationLocation: op.destinationLocation?._id || '',
+        partner: op.partner?._id || '',
         items: op.items.map(i => ({ product: i.product._id, quantity: i.quantity })),
         notes: op.notes || '',
+        scheduledDate: op.scheduledDate ? new Date(op.scheduledDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       });
     } else {
       setViewingOp(null);
-      setFormData({ type: 'Receipt', sourceLocation: '', destinationLocation: '', items: [{ product: '', quantity: 1 }], notes: '' });
+      // Set default type based on Role
+      let defaultType = 'Receipt';
+      if (user?.role === 'Warehouse Staff') defaultType = 'Internal Transfer';
+      
+      setFormData({ type: defaultType, sourceLocation: '', destinationLocation: '', partner: '', items: [{ product: '', quantity: 1 }], notes: '', scheduledDate: new Date().toISOString().split('T')[0] });
     }
     setModalOpen(true);
   };
@@ -166,6 +264,7 @@ const Operations = () => {
       const payload = { ...formData, items: validItems };
       if (!payload.sourceLocation) delete payload.sourceLocation;
       if (!payload.destinationLocation) delete payload.destinationLocation;
+      if (!payload.partner) delete payload.partner; // Added
       if (viewingOp) {
         await api.put(`/operations/${viewingOp._id}`, payload);
         toast.success('Operation updated!');
@@ -197,8 +296,90 @@ const Operations = () => {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownloadSlip = async () => {
+    if (!viewingOp) {
+      toast.error('No operation selected');
+      return;
+    }
+    
+    try {
+      const doc = new jsPDF();
+      const op = viewingOp;
+      
+      console.log('Generating PDF for:', op.referenceNumber);
+      
+      // Header Section
+      doc.setFillColor(99, 102, 241);
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      doc.setFontSize(22);
+      doc.setTextColor(255, 255, 255);
+      doc.text('INVENTORY OPERATION SLIP', 14, 25);
+      
+      doc.setFontSize(10);
+      doc.text(`Ref: ${String(op.referenceNumber || 'N/A')}`, 14, 33);
+      doc.text(`Date: ${new Date(op.createdAt).toLocaleString()}`, 140, 33);
+
+      // Info Section
+      doc.setTextColor(33, 47, 61);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Operation Details', 14, 50);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`Type: ${String(op.type || 'N/A')}`, 14, 58);
+      doc.text(`Status: ${String(op.status || 'N/A')}`, 14, 64);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Source Location:', 14, 75);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(op.sourceLocation?.name || 'External / Vendor'), 14, 81);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Destination Location:', 110, 75);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(op.destinationLocation?.name || 'External / Customer'), 110, 81);
+
+      // Items Table
+      const tableColumn = ["Product SKU", "Product Name", "Quantity"];
+      const tableRows = (op.items || []).map(item => [
+        String(item.product?.sku || '-'),
+        String(item.product?.name || 'Unknown Item'),
+        `${item.quantity || 0} ${String(item.product?.uom || '')}`
+      ]);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 90,
+        theme: 'grid',
+        headStyles: { fillColor: [99, 102, 241], textColor: [255, 255, 255] },
+        styles: { fontSize: 9, cellPadding: 4 }
+      });
+
+      // Notes
+      const finalY = (doc.lastAutoTable?.finalY || 120) + 10;
+      if (op.notes) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Notes:', 14, finalY);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        const splitNotes = doc.splitTextToSize(String(op.notes), 180);
+        doc.text(splitNotes, 14, finalY + 6);
+      }
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('This is a system generated document.', 14, 285);
+
+      triggerDownload(doc, `Operation_${op.referenceNumber || 'slip'}.pdf`);
+      toast.success('Slip downloaded successfully!');
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+      toast.error('Failed to generate PDF: ' + (err.message || 'Unknown error'));
+    }
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -213,7 +394,14 @@ const Operations = () => {
         </div>
 
         <div className="ops-actions">
-          <select className="ops-select" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+          <SearchBar 
+            value={searchTerm}
+            onChange={(v) => { setSearchTerm(v); setPage(1); }}
+            onClear={() => { setSearchTerm(''); setPage(1); }}
+            placeholder="Search reference or notes..."
+          />
+
+          <select className="ops-select" value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}>
             <option value="all">All Types</option>
             <option value="Receipt">Receipts</option>
             <option value="Delivery">Deliveries</option>
@@ -221,10 +409,37 @@ const Operations = () => {
             <option value="Adjustment">Adjustments</option>
           </select>
 
-          <select className="ops-select" value={locationFilter} onChange={e => setLocationFilter(e.target.value)}>
+          <select className="ops-select" value={locationFilter} onChange={e => { setLocationFilter(e.target.value); setPage(1); }}>
             <option value="all">All Locations</option>
             {locations.map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
           </select>
+
+          {/* Date Range Filters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.4)', padding: '0.35rem 0.75rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>From</span>
+              <input 
+                type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }}
+                style={{ background: 'transparent', border: 'none', color: '#f8fafc', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+              />
+            </div>
+            <div style={{ height: '12px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>To</span>
+              <input 
+                type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }}
+                style={{ background: 'transparent', border: 'none', color: '#f8fafc', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button 
+                onClick={() => { setStartDate(''); setEndDate(''); setPage(1); }}
+                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: 0 }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
 
           {/* View Toggle */}
           <div className="view-toggle">
@@ -235,6 +450,10 @@ const Operations = () => {
               <List size={15} />
             </button>
           </div>
+
+          <button className="btn-secondary" onClick={handleExportPDF} title="Export to PDF">
+            <Download size={16} /> Export
+          </button>
 
           <button className="btn-primary" onClick={() => openModal()}>
             <Plus size={16} /> New Operation
@@ -295,8 +514,8 @@ const Operations = () => {
                                 {(provided, snapshot) => (
                                   <div
                                     ref={provided.innerRef}
-                                    {...provided.draggableProps}
                                     {...provided.dragHandleProps}
+                                    {...provided.draggableProps}
                                     className={`kanban-card ${snapshot.isDragging ? 'dragging' : ''}`}
                                     onClick={() => openModal(op)}
                                   >
@@ -351,19 +570,18 @@ const Operations = () => {
             <thead>
               <tr>
                 <th>Reference</th>
-                <th>Type</th>
                 <th>From</th>
                 <th>To</th>
-                <th>Items</th>
+                <th>Contact</th>
+                <th>Schedule date</th>
                 <th>Status</th>
-                <th>Date</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {allOperations.length === 0 ? (
                 <tr className="ops-empty-row">
-                  <td colSpan="8">
+                  <td colSpan="7">
                     <div className="ops-empty-inner">
                       <ShoppingCart size={40} />
                       <span>No operations found</span>
@@ -372,31 +590,23 @@ const Operations = () => {
                 </tr>
               ) : allOperations.map(op => {
                 const col = COLUMNS.find(c => c.id === op.status) || COLUMNS[0];
-                const typeBadge = TYPE_BADGE[op.type] || {};
                 return (
                   <tr key={op._id} onClick={() => openModal(op)} className="table-row-hover">
                     <td className="td-ref">{op.referenceNumber}</td>
-                    <td>
-                      <span className="type-pill" style={{ color: typeBadge.color, background: typeBadge.bg }}>
-                        {op.type}
-                      </span>
-                    </td>
                     <td className="td-muted">{op.sourceLocation?.name || '—'}</td>
                     <td className="td-muted">{op.destinationLocation?.name || '—'}</td>
                     <td>
-                      <span className="td-items-count">
-                        <Package size={13} />{op.items.length}
-                      </span>
+                      <div style={{ color: '#cbd5e1', fontWeight: 500, fontSize: '0.85rem' }}>{op.partner?.name || '-'}</div>
                     </td>
+                    <td className="td-muted" style={{ fontSize: '0.82rem' }}>{formatDate(op.scheduledDate || op.createdAt)}</td>
                     <td>
                       <span className="status-pill" style={{ color: col.color, background: col.bg }}>
                         {op.status}
                       </span>
                     </td>
-                    <td className="td-muted" style={{ fontSize: '0.82rem' }}>{formatDate(op.createdAt)}</td>
                     <td style={{ textAlign: 'right', padding: '0.7rem 1.2rem' }}>
-                      <button className="icon-btn" onClick={e => { e.stopPropagation(); openModal(op); }}>
-                        View
+                      <button className="icon-btn" style={{ background: 'transparent' }} onClick={e => { e.stopPropagation(); openModal(op); }}>
+                         <Edit2 size={16} />
                       </button>
                     </td>
                   </tr>
@@ -406,6 +616,13 @@ const Operations = () => {
           </table>
         </div>
       )}
+
+      {/* Pagination */}
+      <Pagination 
+        currentPage={page} 
+        totalPages={totalPages} 
+        onPageChange={setPage} 
+      />
 
       {/* ── Modal ── */}
       {modalOpen && (
@@ -444,13 +661,45 @@ const Operations = () => {
 
               <div className="modal-header-actions">
                 {viewingOp && (
-                  <button className="print-btn" onClick={handlePrint} type="button">
-                    <Printer size={16} /> Print
-                  </button>
+                  <>
+                    <button className="print-btn" onClick={() => window.print()} type="button" title="Print page">
+                      <Printer size={16} /> Print
+                    </button>
+                    <button className="download-btn" onClick={handleDownloadSlip} type="button" title="Download PDF Slip">
+                      <Download size={16} /> PDF Slip
+                    </button>
+                  </>
                 )}
                 <button className="modal-close" onClick={closeModal}><X size={18} /></button>
               </div>
             </div>
+
+            {viewingOp && (
+              <div className="op-summary-grid">
+                 <div className="op-summary-card">
+                    <div className="summary-label">Reference Number</div>
+                    <div className="summary-value" style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{viewingOp.referenceNumber}</div>
+                 </div>
+                 <div className="op-summary-card">
+                    <div className="summary-label">Status</div>
+                    <div className="summary-value" style={{ color: COLUMNS.find(c => c.id === viewingOp.status)?.color }}>{viewingOp.status}</div>
+                 </div>
+                  <div className="op-summary-card">
+                     <div className="summary-label">Schedule Date</div>
+                     <div className="summary-value">{new Date(viewingOp.scheduledDate || viewingOp.createdAt).toLocaleDateString()}</div>
+                  </div>
+                  <div className="op-summary-card">
+                     <div className="summary-label">Type</div>
+                     <div className="summary-value">{viewingOp.type}</div>
+                  </div>
+                  {viewingOp.partner && (
+                    <div className="op-summary-card">
+                       <div className="summary-label">Partner ({viewingOp.partner.type})</div>
+                       <div className="summary-value">{viewingOp.partner.name}</div>
+                    </div>
+                  )}
+              </div>
+            )}
 
             <form onSubmit={handleSave} className="modal-form">
               {/* Type */}
@@ -458,19 +707,62 @@ const Operations = () => {
                 <label>Operation Type</label>
                 <select
                   value={formData.type}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !!viewingOp} // Type cannot be changed once created
                   onChange={e => setFormData({ ...formData, type: e.target.value, sourceLocation: '', destinationLocation: '' })}
                   className="form-control"
                 >
-                  <option value="Receipt">Receipt — Vendor → Internal</option>
-                  <option value="Delivery">Delivery — Internal → Customer</option>
-                  <option value="Internal Transfer">Internal Transfer</option>
-                  <option value="Adjustment">Inventory Adjustment</option>
+                  {(user?.role === 'Admin' || user?.role === 'Inventory Manager') && (
+                    <>
+                      <option value="Receipt">Receipt — Vendor → Internal</option>
+                      <option value="Delivery">Delivery — Internal → Customer</option>
+                    </>
+                  )}
+                  {(user?.role === 'Admin' || user?.role === 'Warehouse Staff') && (
+                    <>
+                      <option value="Internal Transfer">Internal Transfer</option>
+                      <option value="Adjustment">Inventory Adjustment</option>
+                    </>
+                  )}
                 </select>
               </div>
 
+              {/* Partner Dropdown */}
+              {(formData.type === 'Receipt' || formData.type === 'Delivery') && (
+                <div className="form-group span2">
+                  <label>{formData.type === 'Receipt' ? 'Supplier / Vendor' : 'Customer'}</label>
+                  <select
+                    value={formData.partner}
+                    disabled={isReadOnly}
+                    onChange={e => setFormData({ ...formData, partner: e.target.value })}
+                    className="form-control"
+                    required
+                  >
+                    <option value="">Select Partner...</option>
+                    {partners
+                      .filter(p => formData.type === 'Receipt' ? (p.type === 'Vendor' || p.type === 'Both') : (p.type === 'Customer' || p.type === 'Both'))
+                      .map(p => (
+                        <option key={p._id} value={p._id}>{p.name} ({p.type})</option>
+                      ))
+                    }
+                  </select>
+                </div>
+              )}
+
+              {/* Scheduled Date */}
+              <div className="form-group span2">
+                <label>Schedule Date</label>
+                <input
+                  type="date"
+                  value={formData.scheduledDate}
+                  disabled={isReadOnly}
+                  onChange={e => setFormData({ ...formData, scheduledDate: e.target.value })}
+                  className="form-control"
+                  required
+                />
+              </div>
+
               {/* Source */}
-              {formData.type !== 'Receipt' && (
+              {formData.type !== 'Receipt' && formData.type !== 'Adjustment' && (
                 <div className="form-group">
                   <label>From Location</label>
                   <select required value={formData.sourceLocation} disabled={isReadOnly}
@@ -484,8 +776,8 @@ const Operations = () => {
 
               {/* Destination */}
               {formData.type !== 'Delivery' && (
-                <div className={`form-group ${formData.type === 'Receipt' ? 'span2' : ''}`}>
-                  <label>To Location</label>
+                <div className={`form-group ${formData.type === 'Receipt' || formData.type === 'Adjustment' ? 'span2' : ''}`}>
+                  <label>{formData.type === 'Adjustment' ? 'Adjusted Location' : 'To Location'}</label>
                   <select required value={formData.destinationLocation} disabled={isReadOnly}
                     onChange={e => setFormData({ ...formData, destinationLocation: e.target.value })}
                     className="form-control">
@@ -496,10 +788,10 @@ const Operations = () => {
               )}
 
               {/* Items */}
-              <div className="form-group span2 items-box">
+              <div className={`form-group span2 items-box ${isReadOnly ? 'read-only' : ''}`}>
                 <div className="items-box-header">
                   <Package size={15} style={{ color: '#6366f1' }} />
-                  Products / Items
+                  Products / Items List
                 </div>
                 {formData.items.map((item, idx) => (
                   <div key={idx} className="item-row">
@@ -542,26 +834,30 @@ const Operations = () => {
 
               {/* Footer */}
               <div className="modal-footer span2">
-                <button type="button" onClick={closeModal} className="btn-ghost">Close</button>
+                <div className="modal-footer-secondary">
+                  <button type="button" onClick={closeModal} className="btn-ghost">Close</button>
+                  
+                  {!isReadOnly && viewingOp && canManage(viewingOp.type) && ALLOWED_TRANSITIONS[viewingOp.status]?.map(nextStatus => {
+                    const col = COLUMNS.find(c => c.id === nextStatus);
+                    return (
+                      <button key={nextStatus} type="button" className="btn-status"
+                        style={{ '--s-color': col.color, '--s-bg': col.bg }}
+                        onClick={() => handleStatusChange(viewingOp, nextStatus)}>
+                        {nextStatus === 'Done'
+                          ? <><Check size={13} /> Validate</>
+                          : `→ ${nextStatus}`}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                {!isReadOnly && viewingOp && ALLOWED_TRANSITIONS[viewingOp.status]?.map(nextStatus => {
-                  const col = COLUMNS.find(c => c.id === nextStatus);
-                  return (
-                    <button key={nextStatus} type="button" className="btn-status"
-                      style={{ '--s-color': col.color, '--s-bg': col.bg }}
-                      onClick={() => handleStatusChange(viewingOp, nextStatus)}>
-                      {nextStatus === 'Done'
-                        ? <><Check size={13} /> Validate</>
-                        : `→ ${nextStatus}`}
+                <div className="modal-footer-primary">
+                  {!isReadOnly && canManage(formData.type) && (
+                    <button type="submit" className="btn-primary">
+                      {viewingOp ? 'Save Changes' : 'Draft Operation'}
                     </button>
-                  );
-                })}
-
-                {!isReadOnly && (
-                  <button type="submit" className="btn-primary">
-                    {viewingOp ? 'Save Changes' : 'Draft Operation'}
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </form>
           </div>

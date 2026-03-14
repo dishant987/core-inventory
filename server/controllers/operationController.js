@@ -1,17 +1,42 @@
-import { Operation, Stock, StockLedger, Product, Location } from '../models/index.js';
+import { Operation, Stock, StockLedger, Product, Location, Counter } from '../models/index.js';
 import { sendEmail } from '../utils/sendEmail.js';
 
-// Helper to generate reference numbers
+// Helper to generate professional reference numbers: WH/IN/0001
 const generateReference = async (type) => {
-  const prefix = {
-    'Receipt': 'REC',
-    'Delivery': 'DEL',
-    'Internal Transfer': 'INT',
+  const opMap = {
+    'Receipt': 'IN',
+    'Delivery': 'OUT',
+    'Internal Transfer': 'TRANS',
     'Adjustment': 'ADJ'
-  }[type];
+  };
+  const opCode = opMap[type] || 'OP';
+  const prefix = 'WH'; // Default Warehouse Prefix
   
-  const count = await Operation.countDocuments({ type });
-  return `${prefix}-${String(count + 1).padStart(5, '0')}`;
+  // Find or create sequence for this specific prefix/code combo
+  const counterId = `op_${opCode.toLowerCase()}`;
+  const counter = await Counter.findOneAndUpdate(
+    { id: counterId },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  
+  const sequence = String(counter.seq).padStart(4, '0');
+  return `${prefix}/${opCode}/${sequence}`;
+};
+
+// Helper to check if a user role has permission for an operation type
+const checkOperationPermission = (user, opType) => {
+  if (user.role === 'Admin') return true;
+  
+  if (user.role === 'Inventory Manager') {
+    return ['Receipt', 'Delivery'].includes(opType);
+  }
+  
+  if (user.role === 'Warehouse Staff') {
+    return ['Internal Transfer', 'Adjustment'].includes(opType);
+  }
+  
+  return false;
 };
 
 // @desc    Get all operations
@@ -19,15 +44,34 @@ const generateReference = async (type) => {
 // @access  Private
 export const getOperations = async (req, res) => {
   try {
-    const { type, status, location, page = 1, limit = 10 } = req.query;
+    const { type, status, location, search, page = 1, limit = 10, startDate, endDate } = req.query;
     
     let query = {};
     if (type && type !== 'all') query.type = type;
     if (status && status !== 'all') query.status = status;
+    
+    // Date Range Filter
+    if (startDate || endDate) {
+      query.scheduledDate = {};
+      if (startDate) query.scheduledDate.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.scheduledDate.$lte = end;
+      }
+    }
+
     if (location && location !== 'all') {
       query.$or = [
         { sourceLocation: location },
         { destinationLocation: location }
+      ];
+    }
+
+    if (search) {
+      query.$or = [
+        { referenceNumber: { $regex: search, $options: 'i' } },
+        { notes: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -39,6 +83,7 @@ export const getOperations = async (req, res) => {
       .populate('sourceLocation', 'name type')
       .populate('destinationLocation', 'name type')
       .populate('createdBy', 'name')
+      .populate('partner', 'name type')
       .populate('items.product', 'name sku uom')
       .skip((currentPage - 1) * perPage)
       .limit(perPage)
@@ -64,6 +109,7 @@ export const getOperationById = async (req, res) => {
       .populate('sourceLocation', 'name type')
       .populate('destinationLocation', 'name type')
       .populate('createdBy', 'name')
+      .populate('partner', 'name type')
       .populate('items.product', 'name sku uom');
 
     if (operation) {
@@ -81,7 +127,11 @@ export const getOperationById = async (req, res) => {
 // @access  Private
 export const createOperation = async (req, res) => {
   try {
-    const { type, sourceLocation, destinationLocation, items, notes } = req.body;
+    const { type, sourceLocation, destinationLocation, items, notes, partner, scheduledDate } = req.body;
+
+    if (!checkOperationPermission(req.user, type)) {
+      return res.status(403).json({ message: `Access Denied: ${req.user.role}s cannot manage ${type}s` });
+    }
 
     if (!items || items.length === 0) {
       return res.status(400).json({ message: 'No items provided' });
@@ -96,6 +146,8 @@ export const createOperation = async (req, res) => {
       destinationLocation: destinationLocation || undefined,
       items,
       notes,
+      partner: partner || undefined,
+      scheduledDate: scheduledDate || undefined,
       createdBy: req.user._id,
       status: 'Draft'
     });
@@ -112,12 +164,16 @@ export const createOperation = async (req, res) => {
 // @access  Private
 export const updateOperation = async (req, res) => {
   try {
-    const { sourceLocation, destinationLocation, items, notes, status } = req.body;
+    const { sourceLocation, destinationLocation, items, notes, status, partner, scheduledDate } = req.body;
 
     const operation = await Operation.findById(req.params.id);
 
     if (!operation) {
       return res.status(404).json({ message: 'Operation not found' });
+    }
+
+    if (!checkOperationPermission(req.user, operation.type)) {
+      return res.status(403).json({ message: `Access Denied: ${req.user.role}s cannot manage ${operation.type}s` });
     }
 
     if (operation.status === 'Done' || operation.status === 'Canceled') {
@@ -128,6 +184,8 @@ export const updateOperation = async (req, res) => {
     operation.destinationLocation = destinationLocation !== undefined ? destinationLocation : operation.destinationLocation;
     operation.items = items || operation.items;
     operation.notes = notes !== undefined ? notes : operation.notes;
+    operation.partner = partner !== undefined ? partner : operation.partner;
+    operation.scheduledDate = scheduledDate !== undefined ? scheduledDate : operation.scheduledDate;
     if (status) operation.status = status;
 
     const updatedOperation = await operation.save();
@@ -148,45 +206,82 @@ export const validateOperation = async (req, res) => {
       return res.status(404).json({ message: 'Operation not found' });
     }
 
+    if (!checkOperationPermission(req.user, operation.type)) {
+      return res.status(403).json({ message: `Access Denied: ${req.user.role}s cannot validate ${operation.type}s` });
+    }
+
     if (operation.status === 'Done' || operation.status === 'Canceled') {
       return res.status(400).json({ message: `Operation is already ${operation.status}` });
     }
 
     // Process Stock Updates & Ledgers
     for (const item of operation.items) {
-      // 1. Decrease Stock from Source Location (if applicable)
-      if (operation.sourceLocation) {
-        const sourceStock = await Stock.findOne({ product: item.product._id, location: operation.sourceLocation });
-        if (sourceStock) {
-           sourceStock.quantity -= item.quantity;
-           await sourceStock.save();
-        } else {
-           // For deliveries/transfers, maybe negative stock is allowed or we should throw error.
-           // Allowing negative for now, typical of loose inventory systems until counted.
-           await Stock.create({ product: item.product._id, location: operation.sourceLocation, quantity: -item.quantity });
-        }
-      }
+      if (operation.type === 'Adjustment') {
+        // --- INVENTORY ADJUSTMENT LOGIC ---
+        // 'item.quantity' is the PHYSICAL COUNT. We update stock to MATCH this exactly.
+        const existingStock = await Stock.findOne({ 
+          product: item.product._id, 
+          location: operation.destinationLocation 
+        });
 
-      // 2. Increase Stock at Destination Location (if applicable)
-      if (operation.destinationLocation) {
-        const destStock = await Stock.findOne({ product: item.product._id, location: operation.destinationLocation });
-        if (destStock) {
-           destStock.quantity += item.quantity;
-           await destStock.save();
-        } else {
-           await Stock.create({ product: item.product._id, location: operation.destinationLocation, quantity: item.quantity });
-        }
-      }
+        const currentQty = existingStock ? existingStock.quantity : 0;
+        const delta = item.quantity - currentQty;
 
-      // 3. Create Ledger Entry
-      await StockLedger.create({
-        operation: operation._id,
-        product: item.product._id,
-        fromLocation: operation.sourceLocation || null,
-        toLocation: operation.destinationLocation || null,
-        quantity: item.quantity,
-        date: new Date()
-      });
+        if (existingStock) {
+          existingStock.quantity = item.quantity;
+          await existingStock.save();
+        } else {
+          await Stock.create({ 
+            product: item.product._id, 
+            location: operation.destinationLocation, 
+            quantity: item.quantity 
+          });
+        }
+
+        // Log the DIFF to the ledger so the history makes sense (e.g. +5 or -3)
+        await StockLedger.create({
+          operation: operation._id,
+          product: item.product._id,
+          toLocation: operation.destinationLocation,
+          quantity: delta,
+          date: new Date(),
+          notes: `Inventory Adjustment: ${currentQty} -> ${item.quantity}`
+        });
+
+      } else {
+        // --- STANDARD MOVEMENT LOGIC (Receipt, Delivery, Transfer) ---
+        // 1. Decrease Stock from Source Location (if applicable)
+        if (operation.sourceLocation) {
+          const sourceStock = await Stock.findOne({ product: item.product._id, location: operation.sourceLocation });
+          if (sourceStock) {
+            sourceStock.quantity -= item.quantity;
+            await sourceStock.save();
+          } else {
+            await Stock.create({ product: item.product._id, location: operation.sourceLocation, quantity: -item.quantity });
+          }
+        }
+
+        // 2. Increase Stock at Destination Location (if applicable)
+        if (operation.destinationLocation) {
+          const destStock = await Stock.findOne({ product: item.product._id, location: operation.destinationLocation });
+          if (destStock) {
+            destStock.quantity += item.quantity;
+            await destStock.save();
+          } else {
+            await Stock.create({ product: item.product._id, location: operation.destinationLocation, quantity: item.quantity });
+          }
+        }
+
+        // 3. Create Ledger Entry
+        await StockLedger.create({
+          operation: operation._id,
+          product: item.product._id,
+          fromLocation: operation.sourceLocation || null,
+          toLocation: operation.destinationLocation || null,
+          quantity: item.quantity,
+          date: new Date()
+        });
+      }
     }
 
     operation.status = 'Done';

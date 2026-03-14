@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -12,8 +12,11 @@ import Locations from './pages/Locations';
 import Operations from './pages/Operations';
 import MoveHistory from './pages/MoveHistory';
 import Layout from './components/Layout';
+import Partners from './pages/Partners';
+import Inventory from './pages/Inventory';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Users from './pages/Users';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -26,6 +29,14 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
+  return children;
+};
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', color:'white'}}>Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'Admin') return <Navigate to="/" replace />;
   return children;
 };
 
@@ -93,6 +104,21 @@ function AppRoutes() {
         <ProtectedRoute>
           <Layout><Products /></Layout>
         </ProtectedRoute>
+      } />
+      <Route path="/partners" element={
+        <ProtectedRoute>
+          <Layout><Partners /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/inventory" element={
+        <ProtectedRoute>
+          <Layout><Inventory /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/users" element={
+        <AdminRoute>
+          <Layout><Users /></Layout>
+        </AdminRoute>
       } />
       <Route path="/*" element={
         <ProtectedRoute>
