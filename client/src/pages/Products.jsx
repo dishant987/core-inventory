@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
-import { Plus, Edit2, Trash2, X, Search, Filter } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Search, Filter, Layers, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -10,6 +11,16 @@ const Products = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Stock Modal State
+  const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [viewingStockProduct, setViewingStockProduct] = useState(null);
+  const [productStock, setProductStock] = useState([]);
+  const [productLedger, setProductLedger] = useState([]);
+  const [loadingStock, setLoadingStock] = useState(false);
+
+  const { user } = useAuth();
+  const canEdit = user?.role === 'Admin' || user?.role === 'Inventory Manager';
 
   // Pagination & Filters State
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,8 +32,12 @@ const Products = () => {
 
   // Form State
   const [formData, setFormData] = useState({
-    name: '', sku: '', categoryId: '', description: '',
-    uom: 'pcs', costPrice: 0, salePrice: 0, isActive: true
+    name: '', sku: '', categoryId: '',    salePrice: 0,
+    uom: 'pcs',
+    reorderPoint: 0,
+    reorderQty: 0,
+    description: '',
+    isActive: true,
   });
 
   const fetchData = async () => {
@@ -68,16 +83,16 @@ const Products = () => {
         categoryId: product.categoryId?._id || '',
         description: product.description || '',
         uom: product.uom || 'pcs',
-        costPrice: product.costPrice || 0,
-        salePrice: product.salePrice || 0,
+        salePrice: product.salePrice,
+        uom: product.uom,
+        reorderPoint: product.reorderPoint || 0,
+        reorderQty: product.reorderQty || 0,
+        description: product.description,
         isActive: product.isActive,
       });
     } else {
       setEditingProduct(null);
-      setFormData({
-        name: '', sku: '', categoryId: '', description: '',
-        uom: 'pcs', costPrice: 0, salePrice: 0, isActive: true
-      });
+      setFormData({ name: '', sku: '', categoryId: '', costPrice: 0, salePrice: 0, uom: 'pcs', reorderPoint: 0, reorderQty: 0, description: '', isActive: true });
     }
     setModalOpen(true);
   };
@@ -118,15 +133,34 @@ const Products = () => {
     }
   };
 
+  const handleOpenStockModal = async (product) => {
+    setViewingStockProduct(product);
+    setStockModalOpen(true);
+    setLoadingStock(true);
+    try {
+      const [stockRes, ledgerRes] = await Promise.all([
+         api.get(`/stock?product=${product._id}`),
+         api.get(`/stock/ledger?product=${product._id}&limit=10`)
+      ]);
+      setProductStock(stockRes.data);
+      setProductLedger(ledgerRes.data);
+    } catch (err) {
+       console.error(err);
+       toast.error('Failed to load stock details');
+    } finally {
+       setLoadingStock(false);
+    }
+  };
+
+  const closeStockModal = () => {
+    setStockModalOpen(false);
+    setViewingStockProduct(null);
+    setProductStock([]);
+    setProductLedger([]);
+  };
+
   return (
-    <div style={{
-      minHeight: '100vh', 
-      padding: '2rem', 
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      color: '#f8fafc',
-      fontFamily: "'Inter', sans-serif"
-    }}>
-      <Navbar />
+    <div style={{ color: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{
         background: 'rgba(30, 41, 59, 0.6)', backdropFilter: 'blur(16px)',
@@ -192,20 +226,22 @@ const Products = () => {
                </select>
             </div>
             
-            <button 
-              onClick={() => handleOpenModal()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-                color: 'white', border: 'none', padding: '0.75rem 1.25rem',
-                borderRadius: '12px', fontWeight: 600, cursor: 'pointer',
-                boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.39)', transition: 'transform 0.2s'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            >
-              <Plus size={18} /> Add Product
-            </button>
+            {canEdit && (
+              <button 
+                onClick={() => handleOpenModal()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                  color: 'white', border: 'none', padding: '0.75rem 1.25rem',
+                  borderRadius: '12px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.39)', transition: 'transform 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <Plus size={18} /> Add Product
+              </button>
+            )}
           </div>
         </div>
 
@@ -245,41 +281,59 @@ const Products = () => {
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                         {product.isDeleted ? (
-                          <button 
-                            onClick={async () => {
-                              try {
-                                await api.put(`/products/${product._id}`, { ...product, isDeleted: false, isActive: true });
-                                toast.success('Product restored!');
-                                fetchData();
-                              } catch (e) { toast.error('Failed to restore'); }
-                            }}
-                            style={{
-                              background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', border: 'none',
-                              padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s', fontWeight: 600
-                            }}
-                          >
-                            Restore
-                          </button>
+                          <>
+                            {canEdit && (
+                              <button 
+                                onClick={async () => {
+                                  try {
+                                    await api.put(`/products/${product._id}`, { ...product, isDeleted: false, isActive: true });
+                                    toast.success('Product restored!');
+                                    fetchData();
+                                  } catch (err) { console.error(err); toast.error('Failed to restore'); }
+                                }}
+                                style={{
+                                  background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', border: 'none',
+                                  padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s', fontWeight: 600
+                                }}
+                              >
+                                Restore
+                              </button>
+                            )}
+                          </>
                         ) : (
                           <>
                             <button 
-                              onClick={() => handleOpenModal(product)}
+                              title="View Stock"
+                              onClick={() => handleOpenStockModal(product)}
                               style={{
-                                background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', border: 'none',
+                                background: 'rgba(168, 85, 247, 0.1)', color: '#d8b4fe', border: 'none',
                                 padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
                               }}
                             >
-                              <Edit2 size={16} />
+                              <Layers size={16} />
                             </button>
-                            <button 
-                              onClick={() => handleDelete(product._id)}
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: 'none',
-                                padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
-                              }}
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            {canEdit && (
+                              <button 
+                                onClick={() => handleOpenModal(product)}
+                                style={{
+                                  background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8', border: 'none',
+                                  padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
+                                }}
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button 
+                                onClick={() => handleDelete(product._id)}
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: 'none',
+                                  padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -409,9 +463,33 @@ const Products = () => {
                   <option value="pcs">Pieces (pcs)</option>
                   <option value="kg">Kilogram (kg)</option>
                   <option value="g">Gram (g)</option>
+                  <option value="ltr">Liter (ltr)</option>
+                  <option value="ml">Milliliter (ml)</option>
                   <option value="box">Box</option>
                   <option value="pack">Pack</option>
+                  <option value="set">Set</option>
+                  <option value="m">Meter (m)</option>
+                  <option value="cm">Centimeter (cm)</option>
+                  <option value="ft">Feet (ft)</option>
                 </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#cbd5e1' }}>Reorder Point (Low Stock Alert)</label>
+                <input 
+                  type="number" min="0" value={formData.reorderPoint}
+                  onChange={(e) => setFormData({ ...formData, reorderPoint: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.5)', color: 'white', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#cbd5e1' }}>Reorder Quantity</label>
+                <input 
+                  type="number" min="0" value={formData.reorderQty}
+                  onChange={(e) => setFormData({ ...formData, reorderQty: Number(e.target.value) })}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.5)', color: 'white', boxSizing: 'border-box' }}
+                />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', height: '100%', paddingTop: '1.5rem' }}>
@@ -447,6 +525,116 @@ const Products = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Modal */}
+      {stockModalOpen && viewingStockProduct && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(8px)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'rgba(30, 41, 59, 1)', border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '800px',
+            maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Layers color="#a855f7" /> 
+                {viewingStockProduct.name} - Stock Details
+              </h3>
+              <button onClick={closeStockModal} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                <X size={24} />
+              </button>
+            </div>
+
+            {loadingStock ? (
+               <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Loading inventory logic...</div>
+            ) : (
+               <div style={{ display: 'grid', gap: '2rem' }}>
+                 
+                 {/* Physical On-Hand Quantities by Location */}
+                 <div>
+                   <h4 style={{ margin: '0 0 1rem 0', color: '#f8fafc', fontSize: '1.1rem' }}>Physical Quantities & Locations</h4>
+                   {productStock.length === 0 ? (
+                      <p style={{ margin: 0, color: '#94a3b8', background: 'rgba(15,23,42,0.4)', padding: '1rem', borderRadius: '8px' }}>No physical stock exists for this item.</p>
+                   ) : (
+                      <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                            <thead style={{ background: 'rgba(15,23,42,0.8)' }}>
+                               <tr>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600 }}>Location Name</th>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600 }}>Type</th>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600, textAlign: 'right' }}>On Hand</th>
+                               </tr>
+                            </thead>
+                            <tbody>
+                               {productStock.map(s => (
+                                  <tr key={s._id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                     <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{s.location?.name || 'Unknown'}</td>
+                                     <td style={{ padding: '0.75rem 1rem', color: '#a855f7' }}>{s.location?.type || '-'}</td>
+                                     <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#4ade80' }}>
+                                        {s.quantity} {viewingStockProduct.uom}
+                                     </td>
+                                  </tr>
+                               ))}
+                            </tbody>
+                         </table>
+                      </div>
+                   )}
+                 </div>
+
+                 {/* History of this product matching Operations Engine */}
+                 <div>
+                   <h4 style={{ margin: '0 0 1rem 0', color: '#f8fafc', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                     <Clock size={16} /> Recent Stock Ledger
+                   </h4>
+                   {productLedger.length === 0 ? (
+                      <p style={{ margin: 0, color: '#94a3b8', background: 'rgba(15,23,42,0.4)', padding: '1rem', borderRadius: '8px' }}>No movements recorded in ledger yet.</p>
+                   ) : (
+                      <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                            <thead style={{ background: 'rgba(15,23,42,0.8)' }}>
+                               <tr>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600 }}>Date</th>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600 }}>Operation</th>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600 }}>From &#8594; To</th>
+                                  <th style={{ padding: '0.75rem 1rem', color: '#cbd5e1', fontWeight: 600, textAlign: 'right' }}>Quantity</th>
+                               </tr>
+                            </thead>
+                            <tbody>
+                               {productLedger.map(l => (
+                                  <tr key={l._id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                     <td style={{ padding: '0.75rem 1rem', color: '#94a3b8' }}>
+                                        {new Date(l.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                     </td>
+                                     <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#818cf8' }}>
+                                        {l.operation?.referenceNumber || 'System API'} <br/>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{l.operation?.type}</span>
+                                     </td>
+                                     <td style={{ padding: '0.75rem 1rem', color: '#cbd5e1' }}>
+                                        {l.fromLocation ? l.fromLocation.name : <span style={{color: '#64748b'}}>Ext. Source</span>}
+                                        <span style={{ margin: '0 0.5rem', color: '#475569' }}>&#8594;</span>
+                                        {l.toLocation ? l.toLocation.name : <span style={{color: '#64748b'}}>Ext. Destination</span>}
+                                     </td>
+                                     <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600 }}>
+                                        {l.quantity} {viewingStockProduct.uom}
+                                     </td>
+                                  </tr>
+                               ))}
+                            </tbody>
+                         </table>
+                      </div>
+                   )}
+                 </div>
+
+               </div>
+            )}
           </div>
         </div>
       )}

@@ -73,22 +73,15 @@ const Categories = () => {
         await api.delete(`/categories/${id}`);
         toast.success('Category deleted successfully!');
         fetchCategories();
-      } catch (error) {
-        console.error('Failed to delete category', error);
+      } catch (err) {
+        console.error('Failed to delete category', err);
         toast.error('Failed to delete category');
       }
     }
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', 
-      padding: '2rem', 
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      color: '#f8fafc',
-      fontFamily: "'Inter', sans-serif"
-    }}>
-      <Navbar />
+    <div style={{ color: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{
         background: 'rgba(30, 41, 59, 0.6)',
@@ -177,7 +170,7 @@ const Categories = () => {
                                 await api.put(`/categories/${category._id}`, { ...category, isDeleted: false, isActive: true });
                                 toast.success('Category restored!');
                                 fetchCategories();
-                              } catch (e) { toast.error('Failed to restore'); }
+                              } catch (err) { toast.error('Failed to restore'); console.error(err); }
                             }}
                             style={{
                               background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', border: 'none',
