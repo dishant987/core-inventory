@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { Plus, Edit2, Trash2, X, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
+import DeleteModal from '../components/DeleteModal';
 
 const Locations = () => {
   const [locations, setLocations] = useState([]);
@@ -10,6 +10,8 @@ const Locations = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -87,16 +89,19 @@ const Locations = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this location?")) {
-      try {
-        await api.delete(`/locations/${id}`);
-        toast.success('Location deleted successfully!');
-        fetchLocations();
-      } catch (error) {
-        console.error('Failed to delete location', error);
-        toast.error('Failed to delete location');
-      }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/locations/${deleteTarget._id}`);
+      toast.success('Location deleted successfully!');
+      fetchLocations();
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Failed to delete location', error);
+      toast.error('Failed to delete location');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -232,7 +237,7 @@ const Locations = () => {
                               <Edit2 size={16} />
                             </button>
                             <button 
-                              onClick={() => handleDelete(loc._id)}
+                              onClick={() => setDeleteTarget(loc)}
                               style={{
                                 background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: 'none',
                                 padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
@@ -345,6 +350,16 @@ const Locations = () => {
           </div>
         </div>
       )}
+
+      <DeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Location"
+        itemName={deleteTarget?.name}
+        description="This will soft-delete the location. You can restore it from the Deleted filter."
+        loading={deleteLoading}
+      />
     </div>
   );
 };

@@ -30,7 +30,6 @@ const categorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-categorySchema.index({ name: 1 });
 categorySchema.index({ parentId: 1 });
 
 const Category = mongoose.model('Category', categorySchema);

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { Package, AlertTriangle, ArrowDownCircle, ArrowUpCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';

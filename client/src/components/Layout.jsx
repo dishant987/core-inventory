@@ -1,23 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Sidebar from './Sidebar';
+import { Menu } from 'lucide-react';
+import './Layout.css';
 
 const Layout = ({ children }) => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
-    <div style={{
-      display: 'flex',
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-    }}>
-      <Sidebar />
-      <main style={{
-        flex: 1,
-        marginLeft: '280px', // Matches sidebar width
-        padding: '2rem',
-        minHeight: '100vh',
-        boxSizing: 'border-box'
-      }}>
-        {children}
-      </main>
+    <div className="app-shell">
+      <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="app-main">
+        {/* Mobile topbar */}
+        <header className="mobile-topbar">
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open navigation"
+          >
+            <Menu size={22} />
+          </button>
+          <span className="mobile-brand">CoreInventory</span>
+        </header>
+
+        <main className="app-content">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };

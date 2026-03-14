@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, User, Mail, KeyRound, AlertCircle } from 'lucide-react';
+import { UserPlus, User, Mail, KeyRound, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import './Auth.css';
 
 const Signup = () => {
@@ -14,6 +14,8 @@ const Signup = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const navigate = useNavigate();
   const { signup } = useAuth();
@@ -34,8 +36,20 @@ const Signup = () => {
       return;
     }
 
+    if (formData.loginId.length < 6 || formData.loginId.length > 12) {
+      setError('Login ID must be between 6 and 12 characters');
+      setLoading(false);
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9]).{9,}/.test(formData.password)) {
+      setError('Password must be 9+ chars with uppercase, lowercase & special character');
       setLoading(false);
       return;
     }
@@ -79,6 +93,7 @@ const Signup = () => {
                   value={formData.name}
                   onChange={handleChange}
                   placeholder="Full Name"
+                  required
                 />
               </div>
             </div>
@@ -93,6 +108,9 @@ const Signup = () => {
                   value={formData.loginId}
                   onChange={handleChange}
                   placeholder="6-12 chars"
+                  minLength="6"
+                  maxLength="12"
+                  required
                 />
               </div>
             </div>
@@ -108,6 +126,7 @@ const Signup = () => {
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="name@example.com"
+                required
               />
             </div>
           </div>
@@ -118,12 +137,19 @@ const Signup = () => {
               <div className="input-wrapper">
                 <KeyRound size={20} className="input-icon" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="Password"
+                  minLength="9"
+                  pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9]).{9,}"
+                  title="Must contain at least one uppercase, one lowercase, and one special character"
+                  required
                 />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="toggle-password-btn" tabIndex="-1">
+                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -132,12 +158,17 @@ const Signup = () => {
               <div className="input-wrapper">
                 <KeyRound size={20} className="input-icon" />
                 <input
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="Confirm"
+                  minLength="9"
+                  required
                 />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="toggle-password-btn" tabIndex="-1">
+                   {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
           </div>

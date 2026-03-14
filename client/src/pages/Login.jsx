@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, KeyRound, User, AlertCircle } from 'lucide-react';
+import { LogIn, KeyRound, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import './Auth.css';
 
 const Login = () => {
@@ -9,6 +9,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -20,6 +21,12 @@ const Login = () => {
     
     if (!loginId || !password) {
       setError('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9]).{9,}/.test(password)) {
+      setError('Password must be 9+ chars with uppercase, lowercase & special character');
       setLoading(false);
       return;
     }
@@ -70,12 +77,23 @@ const Login = () => {
             <div className="input-wrapper">
               <KeyRound size={20} className="input-icon" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
+                minLength="9"
+                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9]).{9,}"
+                title="Must contain at least one uppercase, one lowercase, and one special character"
+                required
               />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="toggle-password-btn" tabIndex="-1">
+                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
+          </div>
+          
+          <div style={{ textAlign: 'right', marginBottom: '1.5rem', marginTop: '-0.5rem' }}>
+            <Link to="/forgot-password" style={{ fontSize: '0.85rem', color: '#818cf8', textDecoration: 'none' }}>Forgot password?</Link>
           </div>
 
           <button type="submit" className="auth-button" disabled={loading}>

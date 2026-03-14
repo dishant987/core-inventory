@@ -1,0 +1,84 @@
+/* ─── App Shell ───────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  color: #f8fafc;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Main area sits beside sidebar on desktop ────────── */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* prevent overflow */
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 260px; /* matches sidebar width */
+  transition: margin-left 0.3s ease;
+}
+
+/* ─── Mobile topbar (hidden on desktop) ──────────────── */
+.mobile-topbar {
+  display: none;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1.25rem;
+  background: rgba(10, 14, 30, 0.9);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.hamburger-btn {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #818cf8;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.hamburger-btn:hover { background: rgba(99, 102, 241, 0.2); }
+
+.mobile-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+/* ─── Main content area ───────────────────────────────── */
+.app-content {
+  flex: 1;
+  padding: 2rem;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ─── Responsive breakpoints ──────────────────────────── */
+@media (max-width: 768px) {
+  .app-main {
+    margin-left: 0;
+  }
+  .mobile-topbar {
+    display: flex;
+  }
+  .app-content {
+    padding: 1.25rem 1rem;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .app-content {
+    padding: 1.5rem;
+  }
+}

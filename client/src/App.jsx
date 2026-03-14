@@ -12,6 +12,8 @@ import Locations from './pages/Locations';
 import Operations from './pages/Operations';
 import MoveHistory from './pages/MoveHistory';
 import Layout from './components/Layout';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -50,6 +52,16 @@ function AppRoutes() {
       <Route path="/signup" element={
         <PublicRoute>
           <Signup />
+        </PublicRoute>
+      } />
+      <Route path="/forgot-password" element={
+        <PublicRoute>
+          <ForgotPassword />
+        </PublicRoute>
+      } />
+      <Route path="/reset-password" element={
+        <PublicRoute>
+          <ResetPassword />
         </PublicRoute>
       } />
       <Route path="/profile" element={

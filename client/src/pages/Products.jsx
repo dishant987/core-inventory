@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { Plus, Edit2, Trash2, X, Search, Filter, Layers, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import DeleteModal from '../components/DeleteModal';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -18,6 +18,10 @@ const Products = () => {
   const [productStock, setProductStock] = useState([]);
   const [productLedger, setProductLedger] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
+
+  // Delete Modal State
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const { user } = useAuth();
   const canEdit = user?.role === 'Admin' || user?.role === 'Inventory Manager';
@@ -120,16 +124,19 @@ const Products = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this product?")) {
-      try {
-        await api.delete(`/products/${id}`);
-        toast.success('Product deleted successfully!');
-        fetchData();
-      } catch (error) {
-        console.error('Failed to delete product', error);
-        toast.error('Failed to delete product');
-      }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/products/${deleteTarget._id}`);
+      toast.success('Product deleted successfully!');
+      fetchData();
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Failed to delete product', error);
+      toast.error('Failed to delete product');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -325,7 +332,7 @@ const Products = () => {
                             )}
                             {canEdit && (
                               <button 
-                                onClick={() => handleDelete(product._id)}
+                                onClick={() => setDeleteTarget(product)}
                                 style={{
                                   background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: 'none',
                                   padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
@@ -638,6 +645,16 @@ const Products = () => {
           </div>
         </div>
       )}
+
+      <DeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Product"
+        itemName={deleteTarget ? `[${deleteTarget.sku}] ${deleteTarget.name}` : ''}
+        description="This will soft-delete the product. You can restore it from the Deleted filter."
+        loading={deleteLoading}
+      />
     </div>
   );
 };

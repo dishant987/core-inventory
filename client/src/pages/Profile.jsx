@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { User, Mail, Shield, Hash, Calendar } from 'lucide-react';
-import Navbar from '../components/Navbar';
 
 const Profile = () => {
   const { user } = useAuth();

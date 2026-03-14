@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { Plus, Edit2, Trash2, X, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
+import DeleteModal from '../components/DeleteModal';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -11,6 +11,8 @@ const Categories = () => {
   const [formData, setFormData] = useState({ name: '', description: '', isActive: true });
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchCategories = async () => {
     try {
@@ -67,16 +69,19 @@ const Categories = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this category?")) {
-      try {
-        await api.delete(`/categories/${id}`);
-        toast.success('Category deleted successfully!');
-        fetchCategories();
-      } catch (err) {
-        console.error('Failed to delete category', err);
-        toast.error('Failed to delete category');
-      }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/categories/${deleteTarget._id}`);
+      toast.success('Category deleted successfully!');
+      fetchCategories();
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Failed to delete category', err);
+      toast.error('Failed to delete category');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -193,7 +198,7 @@ const Categories = () => {
                               <Edit2 size={16} />
                             </button>
                             <button 
-                              onClick={() => handleDelete(category._id)}
+                              onClick={() => setDeleteTarget(category)}
                               style={{
                                 background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: 'none',
                                 padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', transition: 'background 0.2s'
@@ -305,6 +310,16 @@ const Categories = () => {
           </div>
         </div>
       )}
+
+      <DeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Category"
+        itemName={deleteTarget?.name}
+        description="This will soft-delete the category. You can restore it from the Deleted filter."
+        loading={deleteLoading}
+      />
     </div>
   );
 };
