@@ -8,6 +8,10 @@ import Home from './pages/Home';
 import Profile from './pages/Profile';
 import Products from './pages/Products';
 import Categories from './pages/Categories';
+import Locations from './pages/Locations';
+import Operations from './pages/Operations';
+import MoveHistory from './pages/MoveHistory';
+import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -50,22 +54,37 @@ function AppRoutes() {
       } />
       <Route path="/profile" element={
         <ProtectedRoute>
-          <Profile />
+          <Layout><Profile /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/locations" element={
+        <ProtectedRoute>
+          <Layout><Locations /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/operations" element={
+        <ProtectedRoute>
+          <Layout><Operations /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/operations/history" element={
+        <ProtectedRoute>
+          <Layout><MoveHistory /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/categories" element={
         <ProtectedRoute>
-          <Categories />
+          <Layout><Categories /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/products" element={
         <ProtectedRoute>
-          <Products />
+          <Layout><Products /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/*" element={
         <ProtectedRoute>
-          <Home />
+          <Layout><Home /></Layout>
         </ProtectedRoute>
       } />
     </Routes>

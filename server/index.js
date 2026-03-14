@@ -9,6 +9,10 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import locationRoutes from './routes/locationRoutes.js';
+import operationRoutes from './routes/operationRoutes.js';
+import stockRoutes from './routes/stockRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 
 dotenv.config();
 
@@ -37,6 +41,10 @@ app.use(cookieParser());
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/locations', locationRoutes);
+app.use('/api/operations', operationRoutes);
+app.use('/api/stock', stockRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Root Endpoint
 app.get('/', (req, res) => {

@@ -7,14 +7,7 @@ const Profile = () => {
   const { user } = useAuth();
 
   return (
-    <div style={{
-      minHeight: '100vh', 
-      padding: '2rem', 
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      color: '#f8fafc',
-      fontFamily: "'Inter', sans-serif"
-    }}>
-      <Navbar />
+    <div style={{ color: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{
         maxWidth: '800px',

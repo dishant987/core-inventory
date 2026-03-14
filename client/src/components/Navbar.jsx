@@ -52,6 +52,15 @@ const Navbar = () => {
           <Link to="/categories" style={{ textDecoration: 'none', color: '#cbd5e1', fontWeight: 500, transition: 'color 0.2s' }} 
             onMouseOver={(e) => e.target.style.color = 'white'} 
             onMouseOut={(e) => e.target.style.color = '#cbd5e1'}>Categories</Link>
+          <Link to="/locations" style={{ textDecoration: 'none', color: '#cbd5e1', fontWeight: 500, transition: 'color 0.2s' }} 
+            onMouseOver={(e) => e.target.style.color = 'white'} 
+            onMouseOut={(e) => e.target.style.color = '#cbd5e1'}>Locations</Link>
+          <Link to="/operations" style={{ textDecoration: 'none', color: '#cbd5e1', fontWeight: 500, transition: 'color 0.2s' }} 
+            onMouseOver={(e) => e.target.style.color = 'white'} 
+            onMouseOut={(e) => e.target.style.color = '#cbd5e1'}>Operations</Link>
+          <Link to="/operations/history" style={{ textDecoration: 'none', color: '#cbd5e1', fontWeight: 500, transition: 'color 0.2s' }} 
+            onMouseOver={(e) => e.target.style.color = 'white'} 
+            onMouseOut={(e) => e.target.style.color = '#cbd5e1'}>History</Link>
         </div>
       </div>
       
