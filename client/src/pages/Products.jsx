@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Plus, Edit2, Trash2, X, Search, Filter, Layers, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Search, Filter, Layers, Clock, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import DeleteModal from '../components/DeleteModal';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
 
 const Products = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,6 +21,8 @@ const Products = () => {
   const [productStock, setProductStock] = useState([]);
   const [productLedger, setProductLedger] = useState([]);
   const [loadingStock, setLoadingStock] = useState(false);
+  const [stockStartDate, setStockStartDate] = useState('');
+  const [stockEndDate, setStockEndDate] = useState('');
 
   // Delete Modal State
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -36,12 +41,14 @@ const Products = () => {
 
   // Form State
   const [formData, setFormData] = useState({
-    name: '', sku: '', categoryId: '',    salePrice: 0,
+    name: '', sku: '', categoryId: '', salePrice: 0,
     uom: 'pcs',
     reorderPoint: 0,
     reorderQty: 0,
     description: '',
     isActive: true,
+    initialStock: 0,
+    initialLocation: '',
   });
 
   const fetchData = async () => {
@@ -55,13 +62,15 @@ const Products = () => {
         ...(statusFilter !== 'all' && { status: statusFilter })
       });
 
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, locRes] = await Promise.all([
         api.get(`/products?${params.toString()}`),
-        api.get('/categories')
+        api.get('/categories'),
+        api.get('/locations')
       ]);
       setProducts(prodRes.data.data);
       setTotalPages(prodRes.data.pages);
       setCategories(catRes.data);
+      setLocations(locRes.data);
     } catch (error) {
       console.error('Failed to fetch data', error);
       toast.error('Failed to load data');
@@ -96,7 +105,11 @@ const Products = () => {
       });
     } else {
       setEditingProduct(null);
-      setFormData({ name: '', sku: '', categoryId: '', costPrice: 0, salePrice: 0, uom: 'pcs', reorderPoint: 0, reorderQty: 0, description: '', isActive: true });
+      setFormData({ 
+        name: '', sku: '', categoryId: '', costPrice: 0, salePrice: 0, uom: 'pcs', 
+        reorderPoint: 0, reorderQty: 0, description: '', isActive: true,
+        initialStock: 0, initialLocation: '' 
+      });
     }
     setModalOpen(true);
   };
@@ -147,10 +160,10 @@ const Products = () => {
     try {
       const [stockRes, ledgerRes] = await Promise.all([
          api.get(`/stock?product=${product._id}`),
-         api.get(`/stock/ledger?product=${product._id}&limit=10`)
+         api.get(`/stock/ledger?product=${product._id}&limit=10${stockStartDate ? `&startDate=${stockStartDate}` : ''}${stockEndDate ? `&endDate=${stockEndDate}` : ''}`)
       ]);
       setProductStock(stockRes.data);
-      setProductLedger(ledgerRes.data);
+      setProductLedger(ledgerRes.data.data || []);
     } catch (err) {
        console.error(err);
        toast.error('Failed to load stock details');
@@ -159,11 +172,19 @@ const Products = () => {
     }
   };
 
+  useEffect(() => {
+    if (stockModalOpen && viewingStockProduct) {
+      handleOpenStockModal(viewingStockProduct);
+    }
+  }, [stockStartDate, stockEndDate]);
+
   const closeStockModal = () => {
     setStockModalOpen(false);
     setViewingStockProduct(null);
     setProductStock([]);
     setProductLedger([]);
+    setStockStartDate('');
+    setStockEndDate('');
   };
 
   return (
@@ -182,21 +203,12 @@ const Products = () => {
           
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             
-            {/* Search */}
-            <div style={{ position: 'relative' }}>
-              <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input 
-                type="text" placeholder="Search name or SKU..."
-                value={searchTerm} onChange={(e) => {setSearchTerm(e.target.value); setPage(1);}}
-                style={{
-                  padding: '0.75rem 1rem 0.75rem 2.5rem', borderRadius: '12px',
-                  background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'white', outline: 'none', width: '220px'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
-              />
-            </div>
+            <SearchBar 
+              value={searchTerm} 
+              onChange={(v) => {setSearchTerm(v); setPage(1);}}
+              onClear={() => {setSearchTerm(''); setPage(1);}}
+              placeholder="Search name or SKU..."
+            />
 
             {/* Category Filter */}
             <div style={{ position: 'relative' }}>
@@ -260,31 +272,49 @@ const Products = () => {
                 <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600 }}>Name</th>
                 <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600 }}>Category</th>
                 <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600 }}>Price</th>
+                <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600 }}>Stock</th>
                 <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600 }}>Status</th>
                 <th style={{ padding: '1rem', color: '#94a3b8', fontWeight: 600, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" style={{ padding: '2rem', textAlign: 'center' }}>Loading products...</td></tr>
+                <tr><td colSpan="7" style={{ padding: '2rem', textAlign: 'center' }}>Loading products...</td></tr>
               ) : products.length === 0 ? (
-                <tr><td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No products found.</td></tr>
+                <tr><td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No products found.</td></tr>
               ) : (
-                products.map(product => (
-                  <tr key={product._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
-                    <td style={{ padding: '1rem', fontWeight: 500, color: '#a855f7' }}>{product.sku}</td>
-                    <td style={{ padding: '1rem', fontWeight: 500 }}>{product.name}</td>
-                    <td style={{ padding: '1rem', color: '#cbd5e1' }}>{product.categoryId?.name || '-'}</td>
-                    <td style={{ padding: '1rem', color: '#cbd5e1' }}>₹{product.salePrice.toFixed(2)}</td>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{
-                        padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.85rem', fontWeight: 600,
-                        background: product.isDeleted ? 'rgba(100, 116, 139, 0.2)' : product.isActive ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                        color: product.isDeleted ? '#94a3b8' : product.isActive ? '#4ade80' : '#f87171'
-                      }}>
-                        {product.isDeleted ? 'Deleted' : product.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
+                products.map(product => {
+                  const isLowStock = product.totalStock <= product.reorderPoint;
+                  const isOutOfStock = product.totalStock <= 0;
+                  
+                  return (
+                    <tr key={product._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }}>
+                      <td style={{ padding: '1rem', fontWeight: 500, color: '#a855f7' }}>{product.sku}</td>
+                      <td style={{ padding: '1rem', fontWeight: 500 }}>{product.name}</td>
+                      <td style={{ padding: '1rem', color: '#cbd5e1' }}>{product.categoryId?.name || '-'}</td>
+                      <td style={{ padding: '1rem', color: '#cbd5e1' }}>₹{product.salePrice.toFixed(2)}</td>
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ 
+                            fontWeight: 700, 
+                            color: isOutOfStock ? '#ef4444' : isLowStock ? '#fbbf24' : '#4ade80' 
+                          }}>
+                            {product.totalStock} {product.uom}
+                          </span>
+                          {isLowStock && (
+                            <AlertTriangle size={14} color={isOutOfStock ? '#ef4444' : '#fbbf24'} title={isOutOfStock ? "Out of Stock" : "Low Stock Alert"} />
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{
+                          padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.85rem', fontWeight: 600,
+                          background: product.isDeleted ? 'rgba(100, 116, 139, 0.2)' : product.isActive ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                          color: product.isDeleted ? '#94a3b8' : product.isActive ? '#4ade80' : '#f87171'
+                        }}>
+                          {product.isDeleted ? 'Deleted' : product.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                         {product.isDeleted ? (
@@ -345,43 +375,19 @@ const Products = () => {
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination Controls */}
-        {!loading && totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', gap: '0.5rem' }}>
-            <button 
-              disabled={page === 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              style={{
-                padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
-                background: page === 1 ? 'transparent' : 'rgba(15, 23, 42, 0.5)',
-                color: page === 1 ? '#475569' : 'white', cursor: page === 1 ? 'not-allowed' : 'pointer'
-              }}
-            >
-              Previous
-            </button>
-            <span style={{ padding: '0.5rem 1rem', color: '#94a3b8' }}>
-              Page {page} of {totalPages}
-            </span>
-            <button 
-              disabled={page === totalPages}
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              style={{
-                padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
-                background: page === totalPages ? 'transparent' : 'rgba(15, 23, 42, 0.5)',
-                color: page === totalPages ? '#475569' : 'white', cursor: page === totalPages ? 'not-allowed' : 'pointer'
-              }}
-            >
-              Next
-            </button>
-          </div>
-        )}
+        <Pagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          onPageChange={setPage} 
+        />
       </div>
 
       {/* Modal */}
@@ -499,7 +505,44 @@ const Products = () => {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', height: '100%', paddingTop: '1.5rem' }}>
+              {/* Initial Inventory (Only for new products) */}
+              {!editingProduct && (
+                <div style={{ 
+                  gridColumn: 'span 2', 
+                  background: 'rgba(99, 102, 241, 0.05)', 
+                  padding: '1.25rem', 
+                  borderRadius: '12px', 
+                  border: '1px dashed rgba(99, 102, 241, 0.3)',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'
+                }}>
+                  <div style={{ gridColumn: 'span 2', fontSize: '0.85rem', color: '#818cf8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                    Initial Inventory (Optional)
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: '#94a3b8' }}>Quantity</label>
+                    <input 
+                      type="number" min="0" value={formData.initialStock}
+                      onChange={(e) => setFormData({ ...formData, initialStock: Number(e.target.value) })}
+                      style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.5)', color: 'white', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: '#94a3b8' }}>Starting Location</label>
+                    <select 
+                      value={formData.initialLocation}
+                      onChange={(e) => setFormData({ ...formData, initialLocation: e.target.value })}
+                      style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 23, 42, 0.5)', color: 'white', boxSizing: 'border-box' }}
+                    >
+                      <option value="">Select location...</option>
+                      {locations.map(loc => (
+                        <option key={loc._id} value={loc._id}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', height: '100%', paddingTop: '0.5rem' }}>
                 <input 
                   type="checkbox" id="p_isActive" checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
@@ -517,16 +560,18 @@ const Products = () => {
                 />
               </div>
 
-              <div style={{ gridColumn: 'span 2', display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <div style={{ gridColumn: 'span 2', display: 'flex', gap: '1rem', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <button 
                   type="button" onClick={closeModal}
-                  style={{ flex: 1, padding: '0.75rem', background: 'transparent', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '12px', fontWeight: 600, cursor: 'pointer' }}
+                  className="btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  style={{ flex: 1, padding: '0.75rem', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px 0 rgba(99, 102, 241, 0.39)' }}
+                  className="btn-primary"
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Save Product
                 </button>
@@ -598,9 +643,18 @@ const Products = () => {
 
                  {/* History of this product matching Operations Engine */}
                  <div>
-                   <h4 style={{ margin: '0 0 1rem 0', color: '#f8fafc', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                     <Clock size={16} /> Recent Stock Ledger
-                   </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 1rem 0' }}>
+                      <h4 style={{ margin: 0, color: '#f8fafc', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Clock size={16} /> Recent Stock Ledger
+                      </h4>
+                      {/* Date Filter in Modal */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(15, 23, 42, 0.4)', padding: '0.25rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>From</span>
+                        <input type="date" value={stockStartDate} onChange={e => setStockStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', fontSize: '0.75rem', outline: 'none' }} />
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginLeft: '0.5rem' }}>To</span>
+                        <input type="date" value={stockEndDate} onChange={e => setStockEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', fontSize: '0.75rem', outline: 'none' }} />
+                      </div>
+                    </div>
                    {productLedger.length === 0 ? (
                       <p style={{ margin: 0, color: '#94a3b8', background: 'rgba(15,23,42,0.4)', padding: '1rem', borderRadius: '8px' }}>No movements recorded in ledger yet.</p>
                    ) : (

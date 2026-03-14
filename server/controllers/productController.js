@@ -1,4 +1,4 @@
-import { Product } from '../models/index.js';
+import { Product, Stock, StockLedger } from '../models/index.js';
 
 // @desc    Get all products
 // @route   GET /api/products
@@ -37,12 +37,45 @@ export const getProducts = async (req, res) => {
     const perPage = parseInt(limit);
     
     const total = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .populate('categoryId', 'name')
-      .populate('createdBy', 'name')
-      .skip((currentPage - 1) * perPage)
-      .limit(perPage)
-      .sort({ createdAt: -1 });
+    
+    // Aggregation to include total quantity
+    const products = await Product.aggregate([
+      { $match: query },
+      { $sort: { createdAt: -1 } },
+      { $skip: (currentPage - 1) * perPage },
+      { $limit: perPage },
+      {
+        $lookup: {
+          from: 'stocks',
+          localField: '_id',
+          foreignField: 'product',
+          as: 'stockData'
+        }
+      },
+      {
+        $addFields: {
+          totalStock: { $sum: '$stockData.quantity' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'categoryId',
+          foreignField: '_id',
+          as: 'categoryId'
+        }
+      },
+      { $unwind: { path: '$categoryId', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'createdBy',
+          foreignField: '_id',
+          as: 'createdBy'
+        }
+      },
+      { $unwind: { path: '$createdBy', preserveNullAndEmptyArrays: true } }
+    ]);
       
     res.json({
       data: products,
@@ -81,7 +114,7 @@ export const createProduct = async (req, res) => {
     const { 
       name, sku, barcode, categoryId, description, uom, 
       costPrice, salePrice, reorderPoint, reorderQty, 
-      image, isActive, tags 
+      image, isActive, tags, initialStock, initialLocation
     } = req.body;
 
     const productExists = await Product.findOne({ sku, isDeleted: false });
@@ -107,6 +140,26 @@ export const createProduct = async (req, res) => {
     });
 
     const createdProduct = await product.save();
+
+    // Handle Initial Stock if provided
+    if (initialStock && initialStock > 0 && initialLocation) {
+      // 1. Create/Update Stock record
+      await Stock.create({
+        product: createdProduct._id,
+        location: initialLocation,
+        quantity: initialStock
+      });
+
+      // 2. Create Ledger entry for audit trail
+      await StockLedger.create({
+        product: createdProduct._id,
+        toLocation: initialLocation,
+        quantity: initialStock,
+        date: new Date(),
+        notes: 'Initial stock during product creation'
+      });
+    }
+
     res.status(201).json(createdProduct);
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -38,16 +38,16 @@ const operationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Location',
       required: function () {
-        // Source location is required for Deliveries, Internal Transfers, and Adjustments (sometimes)
-        return this.type !== 'Receipt';
+        // Source location is required for Deliveries and Internal Transfers
+        return ['Delivery', 'Internal Transfer'].includes(this.type);
       },
     },
     destinationLocation: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Location',
       required: function () {
-        // Destination location is required for Receipts, Internal Transfers, and Adjustments (sometimes)
-        return this.type !== 'Delivery';
+        // Destination location is required for Receipts, Internal Transfers, and Adjustments
+        return ['Receipt', 'Internal Transfer', 'Adjustment'].includes(this.type);
       },
     },
     items: [operationItemSchema],
@@ -55,6 +55,14 @@ const operationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    partner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Partner',
+    },
+    scheduledDate: {
+      type: Date,
+      default: Date.now,
     },
     notes: {
       type: String,

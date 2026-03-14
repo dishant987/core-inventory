@@ -5,6 +5,8 @@ import Product from './Product.js';
 import Stock from './Stock.js';
 import Operation from './Operation.js';
 import StockLedger from './StockLedger.js';
+import Partner from './Partner.js';
+import Counter from './Counter.js';
 
 export {
   User,
@@ -14,4 +16,6 @@ export {
   Stock,
   Operation,
   StockLedger,
+  Partner,
+  Counter
 };

@@ -5,7 +5,7 @@ import { Location } from '../models/index.js';
 // @access  Private
 export const getLocations = async (req, res) => {
   try {
-    const { status, type } = req.query;
+    const { status, type, search, page, limit } = req.query;
     
     let query = {};
     if (status === 'deleted') {
@@ -21,7 +21,30 @@ export const getLocations = async (req, res) => {
       query.type = type;
     }
 
-    const locations = await Location.find(query).populate('parentId', 'name type');
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // If pagination params are present
+    if (page && limit) {
+      const currentPage = parseInt(page);
+      const perPage = parseInt(limit);
+      const total = await Location.countDocuments(query);
+      const locations = await Location.find(query)
+        .populate('parentId', 'name type')
+        .skip((currentPage - 1) * perPage)
+        .limit(perPage)
+        .sort({ name: 1 });
+
+      return res.json({
+        data: locations,
+        page: currentPage,
+        pages: Math.ceil(total / perPage),
+        total
+      });
+    }
+
+    const locations = await Location.find(query).populate('parentId', 'name type').sort({ name: 1 });
     res.json(locations);
   } catch (error) {
     res.status(500).json({ message: error.message });

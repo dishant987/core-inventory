@@ -5,7 +5,8 @@ import { Category } from '../models/index.js';
 // @access  Private
 export const getCategories = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, search, page, limit } = req.query;
+    
     let query = {};
     if (status === 'deleted') {
       query.isDeleted = true;
@@ -15,7 +16,32 @@ export const getCategories = async (req, res) => {
         query.isActive = status === 'active';
       }
     }
-    const categories = await Category.find(query).populate('parentId', 'name');
+
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    // If page and limit are provided, do pagination
+    if (page && limit) {
+      const currentPage = parseInt(page);
+      const perPage = parseInt(limit);
+      const total = await Category.countDocuments(query);
+      const categories = await Category.find(query)
+        .populate('parentId', 'name')
+        .skip((currentPage - 1) * perPage)
+        .limit(perPage)
+        .sort({ name: 1 });
+
+      return res.json({
+        data: categories,
+        page: currentPage,
+        pages: Math.ceil(total / perPage),
+        total
+      });
+    }
+
+    // Otherwise return all (backwards compatible/for dropdowns)
+    const categories = await Category.find(query).populate('parentId', 'name').sort({ name: 1 });
     res.json(categories);
   } catch (error) {
     res.status(500).json({ message: error.message });

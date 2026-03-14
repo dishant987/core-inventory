@@ -13,6 +13,8 @@ import locationRoutes from './routes/locationRoutes.js';
 import operationRoutes from './routes/operationRoutes.js';
 import stockRoutes from './routes/stockRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import partnerRoutes from './routes/partnerRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 dotenv.config();
 
@@ -45,6 +47,8 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/partners', partnerRoutes);
+app.use('/api/users', userRoutes);
 
 // Root Endpoint
 app.get('/', (req, res) => {

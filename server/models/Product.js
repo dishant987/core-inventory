@@ -89,11 +89,11 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// Virtual: total stock across all locations (populated separately via StockLevel)
-productSchema.virtual('totalStock', {
-  ref: 'StockLevel',
+// Virtual: total stock across all locations
+productSchema.virtual('stockRecords', {
+  ref: 'Stock',
   localField: '_id',
-  foreignField: 'productId',
+  foreignField: 'product',
   justOne: false,
 });
 

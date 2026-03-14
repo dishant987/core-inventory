@@ -2,26 +2,46 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Package, Clock, Layers, ArrowRight, Activity, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
+import SearchBar from '../components/SearchBar';
+import Pagination from '../components/Pagination';
 
 const MoveHistory = () => {
   const [ledger, setLedger] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const limit = 20;
+
+  const fetchLedger = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page,
+        limit,
+        ...(searchTerm && { search: searchTerm }),
+        ...(startDate && { startDate }),
+        ...(endDate && { endDate })
+      });
+      const { data } = await api.get(`/stock/ledger?${params.toString()}`);
+      setLedger(data.data || []);
+      setTotalPages(data.pages || 1);
+    } catch (error) {
+      console.error('Failed to load ledger', error);
+      toast.error('Failed to load move history.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLedger = async () => {
-      try {
-        setLoading(true);
-        const { data } = await api.get('/stock/ledger?limit=100');
-        setLedger(data);
-      } catch (error) {
-        console.error('Failed to load ledger', error);
-        toast.error('Failed to load move history.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLedger();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchLedger();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, page, startDate, endDate]);
 
   return (
     <div style={{ color: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
@@ -37,6 +57,41 @@ const MoveHistory = () => {
               <Activity color="#a855f7" /> Immutable Move History
             </h2>
             <p style={{ margin: 0, color: '#94a3b8' }}>A complete timestamped log of all physical stock movements across your ecosystem.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            {/* Date Range Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.4)', padding: '0.5rem 1rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>From</span>
+                <input 
+                  type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }}
+                  style={{ background: 'transparent', border: 'none', color: '#f8fafc', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                />
+              </div>
+              <div style={{ height: '12px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>To</span>
+                <input 
+                  type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }}
+                  style={{ background: 'transparent', border: 'none', color: '#f8fafc', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+                />
+              </div>
+              {(startDate || endDate) && (
+                <button 
+                  onClick={() => { setStartDate(''); setEndDate(''); setPage(1); }}
+                  style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <SearchBar 
+              value={searchTerm} 
+              onChange={(v) => { setSearchTerm(v); setPage(1); }} 
+              onClear={() => { setSearchTerm(''); setPage(1); }}
+              placeholder="Search by product or SKU..."
+            />
           </div>
         </div>
 
@@ -125,6 +180,11 @@ const MoveHistory = () => {
             </tbody>
           </table>
         </div>
+        <Pagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          onPageChange={setPage} 
+        />
       </div>
     </div>
   );

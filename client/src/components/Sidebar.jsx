@@ -4,21 +4,26 @@ import { useAuth } from '../context/AuthContext';
 import {
   Package, LayoutDashboard, Tags, MapPin,
   ArrowLeftRight, History, User, LogOut,
-  ChevronRight, Warehouse, Menu, X
+  ChevronRight, Warehouse, Menu, X, Users, Layers
 } from 'lucide-react';
 import './Sidebar.css';
 
 const menuItems = [
   { name: 'Dashboard',    path: '/',                  icon: LayoutDashboard },
+  { name: 'Inventory (Stock Levels)', path: '/inventory', icon: Layers },
   { name: 'Products',     path: '/products',           icon: Package },
   { name: 'Categories',   path: '/categories',         icon: Tags },
-  { name: 'Locations',    path: '/locations',          icon: MapPin },
-  { name: 'Operations',   path: '/operations',         icon: ArrowLeftRight },
-  { name: 'Move History', path: '/operations/history', icon: History },
+  { name: 'Operations (All)',   path: '/operations',         icon: ArrowLeftRight },
+  { name: 'Stock Ledger', path: '/operations/history', icon: History },
 ];
 
 const setupItems = [
-  { name: 'Warehouse', path: '/locations', icon: Warehouse },
+  { name: 'Warehouse / Locations', path: '/locations', icon: Warehouse },
+  { name: 'Partners (Vendors/Customers)', path: '/partners', icon: Users },
+];
+
+const adminItems = [
+  { name: 'Manage Users', path: '/users', icon: Users },
 ];
 
 const Sidebar = ({ mobileOpen, onClose }) => {
@@ -72,6 +77,13 @@ const Sidebar = ({ mobileOpen, onClose }) => {
 
           <p className="nav-section-label" style={{ marginTop: '2rem' }}>Setup</p>
           {setupItems.map(item => <NavItem key={item.name} item={item} />)}
+
+          {user?.role === 'Admin' && (
+            <>
+              <p className="nav-section-label" style={{ marginTop: '2rem' }}>Administration</p>
+              {adminItems.map(item => <NavItem key={item.name} item={item} />)}
+            </>
+          )}
         </nav>
 
         {/* Profile footer */}
