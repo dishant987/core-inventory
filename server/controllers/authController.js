@@ -137,3 +137,22 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+export const myProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const logout = (req, res) => {
+  // Since we are using JSON Web Tokens (JWT) typically stored in localStorage
+  // on the frontend, actual "logout" is simply returning a 200 OK 
+  // and having the frontend drop the token.
+  res.status(200).json({ message: 'Logged out successfully' });
+};
+
